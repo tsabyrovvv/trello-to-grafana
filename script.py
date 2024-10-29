@@ -33,14 +33,6 @@ LABELS = {
     'В очереди': '660ee7adbdaa125b3cee36ab'
 }
 
-LOCAL_LABELS = {
-    'SR': '645e0f811ef89e539277b0e4',
-    'Yandex': '660ed11113deef4bd6c51eb9',
-    'БЗ': '645e0f811ef89e539277b0e1',
-    'LE': '645e0f811ef89e539277b0da',
-    'В очереди': '660ee7adbdaa125b3cee36ab'
-}
-
 # Функция получения данных из Trello
 def get_trello_data():
     url = f'https://api.trello.com/1/boards/{MAIN_TRELLO_DESK_ID}/cards'
@@ -56,7 +48,7 @@ def categorize_cards(cards):
     counts = defaultdict(int)
     label_counts_timur = defaultdict(int)
     label_counts_hozhimurod = defaultdict(int)
-    none_cards_per_project = defaultdict(int)  # Добавляем счетчик none cards по проектам
+    none_cards_per_project = defaultdict(int)
     done_count = 0
     total_cards_count = 0
     timur_count = 0
@@ -71,8 +63,6 @@ def categorize_cards(cards):
         members = card['idMembers']
         labels = [label['id'] for label in card['labels']]
 
-        print(f"Processing card {card['id']} with labels {labels} and members {members}")
-
         if list_id == DONE_CARDS_LIST_ID:
             done_count += 1
         else:
@@ -85,27 +75,22 @@ def categorize_cards(cards):
             elif list_id == VENDOR_LIST_ID:
                 vendor_count += 1
 
-            # Проверяем метки 'SR', 'Yandex', 'БЗ'
-            project_assigned = False  # Флаг, что карточка относится к проекту
+            project_assigned = False
             for project, label_id in LABELS.items():
                 if label_id in labels:
-                    project_assigned = True  # Карточка относится к проекту
+                    project_assigned = True
                     counts[project] += 1
                     if TIMUR_ID in members:
-                        print(f"Timur is a member of card {card['id']} with project {project}")
                         label_counts_timur[project] += 1
                     if HOZHIMUROD_ID in members:
-                        print(f"Hozhimurod is a member of card {card['id']} with project {project}")
                         label_counts_hozhimurod[project] += 1
 
-            # Подсчет карточек по участникам
             if TIMUR_ID in members:
                 timur_cards += 1
             if HOZHIMUROD_ID in members:
                 hozhimurod_cards += 1
             if TIMUR_ID not in members and HOZHIMUROD_ID not in members:
                 none_cards += 1
-                # Если карточка не имеет участников, увеличиваем счетчик по проекту
                 if project_assigned:
                     for project, label_id in LABELS.items():
                         if label_id in labels:
@@ -125,31 +110,21 @@ def save_statistics_to_db(counts, label_counts_timur, label_counts_hozhimurod,
         conn = psycopg2.connect(dbname="postgres", user="postgres", password="root", host="localhost")
         cursor = conn.cursor()
 
+        # Очистка старых данных
+        cursor.execute("DELETE FROM trello_statistics")
+
         for project, count in counts.items():
             cursor.execute(
                 """
                 INSERT INTO trello_statistics (project, count, done_count, total_cards_count, timur_count, hozhimurod_count, vendor_count, timur_cards, hozhimurod_cards, none_cards, timur_label_count, hozhimurod_label_count, none_cards_per_project)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (project) DO UPDATE
-                SET count = EXCLUDED.count,
-                    done_count = EXCLUDED.done_count,
-                    total_cards_count = EXCLUDED.total_cards_count,
-                    timur_count = EXCLUDED.timur_count,
-                    hozhimurod_count = EXCLUDED.hozhimurod_count,
-                    vendor_count = EXCLUDED.vendor_count,
-                    timur_cards = EXCLUDED.timur_cards,
-                    hozhimurod_cards = EXCLUDED.hozhimurod_cards,
-                    none_cards = EXCLUDED.none_cards,
-                    timur_label_count = CASE WHEN EXCLUDED.timur_label_count IS NULL THEN 0 ELSE EXCLUDED.timur_label_count END,
-                    hozhimurod_label_count = CASE WHEN EXCLUDED.hozhimurod_label_count IS NULL THEN 0 ELSE EXCLUDED.hozhimurod_label_count END,
-                    none_cards_per_project = EXCLUDED.none_cards_per_project
                 """,
                 (
                     project, count, done_count, total_cards_count, timur_count, hozhimurod_count, 
                     vendor_count, timur_cards, hozhimurod_cards, none_cards, 
                     label_counts_timur.get(project, 0),  
                     label_counts_hozhimurod.get(project, 0),  
-                    none_cards_per_project.get(project, 0)  # Добавляем none cards для каждого проекта
+                    none_cards_per_project.get(project, 0)
                 )
             )
         
