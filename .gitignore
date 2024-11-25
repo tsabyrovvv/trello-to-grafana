@@ -1,2 +1,3 @@
 venv/
 trello_to_grafana.log
+config.py
